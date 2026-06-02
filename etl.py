@@ -2,8 +2,16 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from datetime import date
+from pybaseball import schedule_and_record
+import pandas as pd
 
 load_dotenv()
+
+TEAMS = [
+    'ARI', 'ATL', 'BAL', 'BOS', 'CHC', 'CHW', 'CIN', 'CLE', 'COL', 'DET',
+    'HOU', 'KCR', 'LAA', 'LAD', 'MIA', 'MIL', 'MIN', 'NYM', 'NYY', 'OAK',
+    'PHI', 'PIT', 'SDP', 'SFG', 'SEA', 'STL', 'TBR', 'TEX', 'TOR', 'WSN'
+]
 
 
 def get_watermark():
@@ -28,8 +36,6 @@ def get_watermark():
 
 def get_loaded_teams(load_date):
 
-    skip_teams = []
-
     try:
         engine = create_engine(
             f"mysql+pymysql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}@localhost/{os.environ.get('DB_NAME')}")
@@ -37,11 +43,23 @@ def get_loaded_teams(load_date):
         with engine.connect() as conn:
             result = conn.execute(text("SELECT tm FROM audit_log WHERE game_date = :load_date AND status = 'success'"), {
                                   "load_date": load_date})
-            if result:
-                skip_teams.append(result)
-                return skip_teams
-            else:
-                rows = result.fetchall()
-                return rows
+            rows = result.fetchall()
+            return [row[0] for row in rows]
     except Exception as e:
         print(f"Error: {e}")
+        return []
+
+
+def extract(load_date):
+    loaded_teams = get_loaded_teams(load_date)
+    results = []
+
+    for team in TEAMS:
+        # If team is in the loaded_teams, skip it
+        if team in loaded_teams:
+            continue
+        else:
+            data = schedule_and_record(2024, team)
+            filtered_data = data[data['Date'].str.contains(str(load_date))]
+            results.append(filtered_data)
+    return pd.concat(results, ignore_index=True)
