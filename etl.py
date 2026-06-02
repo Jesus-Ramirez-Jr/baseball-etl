@@ -63,3 +63,28 @@ def extract(load_date):
             filtered_data = data[data['Date'].str.contains(str(load_date))]
             results.append(filtered_data)
     return pd.concat(results, ignore_index=True)
+
+
+def transform(results):
+    column_mapping = {
+        'Date': 'date',
+        'Tm': 'tm',
+        'Home_Away': 'home_away',
+        'Opp': 'opp',
+        'W/L': 'result',
+        'R': 'r',
+        'RA': 'ra',
+        'Inn': 'inn',
+        'W-L': 'record',
+        'Rank': 'ranking',
+        'GB': 'gb'
+    }
+
+    df_transform = results.rename(columns=column_mapping)
+
+    destination_columns = ['date', 'tm', 'home_away', 'opp',
+                           'result', 'r', 'ra', 'inn', 'record', 'ranking', 'gb']
+
+    df_transform = df_transform[destination_columns]
+
+    return df_transform
