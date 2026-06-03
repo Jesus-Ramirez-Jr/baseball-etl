@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, text
 from datetime import date
 from pybaseball import schedule_and_record
 import pandas as pd
+from sqlalchemy.exc import OperationalError
 
 load_dotenv()
 
@@ -88,3 +89,35 @@ def transform(results):
     df_transform = df_transform[destination_columns]
 
     return df_transform
+
+
+def load(df_transform, team, load_date, table_name='games'):
+    try:
+        engine = create_engine(
+            f"mysql+pymysql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}@localhost/{os.environ.get('DB_NAME')}")
+
+        with engine.begin() as conn:
+            df_transform.to_sql(table_name, con=engine,
+                                if_exists='append', index=False)
+            conn.execute(text("""
+                INSERT INTO audit_log (tm, game_date, loaded_at, status)
+                VALUES (:tm, :game_date, NOW(), :status)
+                """), {"tm": team, "game_date": load_date, "status": "success"})
+
+            print(
+                f"{team} was successfully loaded on {load_date} and logged to audit_table")
+
+    except Exception as e:
+        try:
+            engine = create_engine(
+                f"mysql+pymysql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}@localhost/{os.environ.get('DB_NAME')}")
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    INSERT INTO audit_log (tm, game_date, loaded_at, status)
+                    VALUES (:tm, :game_date, NOW(), :status)
+                    """), {"tm": team, "game_date": load_date, "status": "failed"})
+        except Exception as log_error:
+            print(f"Failed to write audit log: {log_error}")
+            raise
+        print(f"Loading failed: {e}")
+        raise
