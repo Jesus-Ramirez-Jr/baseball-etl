@@ -1,10 +1,10 @@
 import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
-from datetime import date
+from datetime import date, timedelta
 from pybaseball import schedule_and_record
 import pandas as pd
-from sqlalchemy.exc import OperationalError
+
 
 load_dotenv()
 
@@ -51,19 +51,13 @@ def get_loaded_teams(load_date):
         return []
 
 
-def extract(load_date):
+def extract(team, load_date):
     loaded_teams = get_loaded_teams(load_date)
-    results = []
-
-    for team in TEAMS:
-        # If team is in the loaded_teams, skip it
-        if team in loaded_teams:
-            continue
-        else:
-            data = schedule_and_record(2024, team)
-            filtered_data = data[data['Date'].str.contains(str(load_date))]
-            results.append(filtered_data)
-    return pd.concat(results, ignore_index=True)
+    if team in loaded_teams:
+        return None
+    data = schedule_and_record(2024, team)
+    filtered_data = data[data['Date'].str.contains(str(load_date))]
+    return filtered_data
 
 
 def transform(results):
@@ -121,3 +115,44 @@ def load(df_transform, team, load_date, table_name='games'):
             raise
         print(f"Loading failed: {e}")
         raise
+
+
+def update_watermark(load_date):
+    try:
+        engine = create_engine(
+            f"mysql+pymysql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}@localhost/{os.environ.get('DB_NAME')}")
+
+        with engine.begin() as conn:
+            query = text("UPDATE watermark SET date = :new_date WHERE id = 1")
+            conn.execute(query, {"new_date": load_date})
+
+    except Exception as e:
+        print(f"Loading failed: {e}")
+        raise
+
+
+def main():
+    required_vars = ['DB_USER', 'DB_PASSWORD', 'DB_NAME']
+
+    missing = [v for v in required_vars if not os.environ.get(v)]
+    if missing:
+        raise EnvironmentError(
+            f"Missing required environment variables: {missing}")
+
+    watermark_date = get_watermark()
+
+    one_day = timedelta(days=1)
+    date_to_load = watermark_date + one_day
+
+    for team in TEAMS:
+        df = extract(team, date_to_load)
+        if df is None or df.empty:
+            continue
+        df = transform(df)
+        load(df, team, date_to_load, table_name='games')
+
+    update_watermark(date_to_load)
+
+
+if __name__ == '__main__':
+    main()
