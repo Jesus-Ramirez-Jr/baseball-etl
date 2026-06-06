@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, text
 from datetime import date, timedelta
 from pybaseball import schedule_and_record
 import pandas as pd
+import time
 
 
 load_dotenv()
@@ -56,7 +57,10 @@ def extract(team, load_date):
     if team in loaded_teams:
         return None
     data = schedule_and_record(2024, team)
-    filtered_data = data[data['Date'].str.contains(str(load_date))]
+    time.sleep(3)
+    load_date_str = load_date.strftime('%b %-d')
+    filtered_data = data[data['Date'].str.contains(
+        r'(?<!\d)' + load_date_str + r'(?!\d)', regex=True)]
     return filtered_data
 
 
@@ -76,9 +80,13 @@ def transform(results):
     }
 
     df_transform = results.rename(columns=column_mapping)
+    df_transform['game_num'] = df_transform['date'].str.extract(
+        r'\((\d)\)').fillna(1).astype(int)
+    df_transform['date'] = pd.to_datetime(df_transform['date'].str.extract(
+        r'(\w+ \d+)')[0].apply(lambda x: f"{x}, 2024"), format='%b %d, %Y').dt.date
 
     destination_columns = ['date', 'tm', 'home_away', 'opp',
-                           'result', 'r', 'ra', 'inn', 'record', 'ranking', 'gb']
+                           'result', 'r', 'ra', 'inn', 'record', 'ranking', 'gb', 'game_num']
 
     df_transform = df_transform[destination_columns]
 
