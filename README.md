@@ -68,7 +68,7 @@ pip install -r requirements.txt
 export DB_USER=your_mysql_username
 export DB_PASSWORD=your_mysql_password
 
-# 6. Run the script
+# 5. Run the script
 python etl.py
 ```
 
@@ -78,7 +78,7 @@ python etl.py
 
 
 
-### How it works
+### How to run
 
 - `.env` — Your local copy with real credentials. **Never commit this file.** Make sure it's in `.gitignore`.
 
