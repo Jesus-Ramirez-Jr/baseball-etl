@@ -6,7 +6,6 @@ from pybaseball import schedule_and_record
 import pandas as pd
 import time
 
-
 load_dotenv()
 
 TEAMS = [
@@ -15,13 +14,12 @@ TEAMS = [
     'PHI', 'PIT', 'SDP', 'SFG', 'SEA', 'STL', 'TBR', 'TEX', 'TOR', 'WSN'
 ]
 
+engine = create_engine(
+    f"mysql+pymysql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}@localhost/{os.environ.get('DB_NAME')}")
+
 
 def get_watermark():
-
     try:
-        engine = create_engine(
-            f"mysql+pymysql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}@localhost/{os.environ.get('DB_NAME')}")
-
         with engine.connect() as conn:
             result = conn.execute(
                 text("SELECT date FROM watermark WHERE id = 1"))
@@ -30,21 +28,18 @@ def get_watermark():
                 return row[0]
             else:
                 return date(2024, 3, 28)
-
     except Exception as e:
         print(f"Database error: {e}. Falling back to default date.")
         return date(2024, 3, 28)
 
 
 def get_loaded_teams(load_date):
-
     try:
-        engine = create_engine(
-            f"mysql+pymysql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}@localhost/{os.environ.get('DB_NAME')}")
-
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT tm FROM audit_log WHERE game_date = :load_date AND status = 'success'"), {
-                                  "load_date": load_date})
+            result = conn.execute(
+                text(
+                    "SELECT tm FROM audit_log WHERE game_date = :load_date AND status = 'success'"),
+                {"load_date": load_date})
             rows = result.fetchall()
             return [row[0] for row in rows]
     except Exception as e:
@@ -82,22 +77,18 @@ def transform(results):
     df_transform = results.rename(columns=column_mapping)
     df_transform['game_num'] = df_transform['date'].str.extract(
         r'\((\d)\)').fillna(1).astype(int)
+    # Year is hardcoded to 2024 because pybaseball schedule_and_record only has complete data through 2024
     df_transform['date'] = pd.to_datetime(df_transform['date'].str.extract(
         r'(\w+ \d+)')[0].apply(lambda x: f"{x}, 2024"), format='%b %d, %Y').dt.date
 
     destination_columns = ['date', 'tm', 'home_away', 'opp',
                            'result', 'r', 'ra', 'inn', 'record', 'ranking', 'gb', 'game_num']
-
     df_transform = df_transform[destination_columns]
-
     return df_transform
 
 
 def load(df_transform, team, load_date, table_name='games'):
     try:
-        engine = create_engine(
-            f"mysql+pymysql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}@localhost/{os.environ.get('DB_NAME')}")
-
         with engine.begin() as conn:
             df_transform.to_sql(table_name, con=engine,
                                 if_exists='append', index=False)
@@ -105,14 +96,10 @@ def load(df_transform, team, load_date, table_name='games'):
                 INSERT INTO audit_log (tm, game_date, loaded_at, status)
                 VALUES (:tm, :game_date, NOW(), :status)
                 """), {"tm": team, "game_date": load_date, "status": "success"})
-
             print(
                 f"{team} was successfully loaded on {load_date} and logged to audit_table")
-
     except Exception as e:
         try:
-            engine = create_engine(
-                f"mysql+pymysql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}@localhost/{os.environ.get('DB_NAME')}")
             with engine.begin() as conn:
                 conn.execute(text("""
                     INSERT INTO audit_log (tm, game_date, loaded_at, status)
@@ -127,13 +114,9 @@ def load(df_transform, team, load_date, table_name='games'):
 
 def update_watermark(load_date):
     try:
-        engine = create_engine(
-            f"mysql+pymysql://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASSWORD')}@localhost/{os.environ.get('DB_NAME')}")
-
         with engine.begin() as conn:
             query = text("UPDATE watermark SET date = :new_date WHERE id = 1")
             conn.execute(query, {"new_date": load_date})
-
     except Exception as e:
         print(f"Loading failed: {e}")
         raise
@@ -141,14 +124,12 @@ def update_watermark(load_date):
 
 def main():
     required_vars = ['DB_USER', 'DB_PASSWORD', 'DB_NAME']
-
     missing = [v for v in required_vars if not os.environ.get(v)]
     if missing:
         raise EnvironmentError(
             f"Missing required environment variables: {missing}")
 
     watermark_date = get_watermark()
-
     one_day = timedelta(days=1)
     date_to_load = watermark_date + one_day
 
